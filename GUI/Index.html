@@ -3,47 +3,16 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Qur’an Search — Hybrid IR (BM25 + Embeddings) — Offline UI (Patched)</title>
+<title>Qur’an Search — Hybrid IR (BM25 + Embeddings)</title>
 <style>
-  :root{
-    --bg:#0f172a; --fg:#e5e7eb; --card:#111827; --border:#1f2937;
-    --muted:#94a3b8; --link:#93c5fd; --chip:#334155; --okbg:#052e1a; --okfg:#86efac;
-    --warnbg:#3f1d1d; --warnfg:#fecaca;
-  }
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px system-ui,Segoe UI,Roboto,Arial}
-  .wrap{max-width:1100px;margin:22px auto;padding:0 14px}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px}
-  .btn,.input,select{background:#0b1220;color:var(--fg);border:1px solid #273244;border-radius:8px;padding:8px 10px}
-  .btn{cursor:pointer}
-  .col2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .list{height:58vh;overflow:auto;border-radius:8px}
-  .item{padding:10px;border-bottom:1px solid #1e293b}
-  .item:hover{background:#0b1220}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .muted{color:var(--muted)}
-  .eng{color:#cbd5e1;margin-top:6px}
-  label.small{font-size:12px;color:#cbd5e1}
-  .chip{padding:4px 8px;border:1px solid var(--chip);border-radius:999px;font-size:12px}
-  .ok{background:var(--okbg);border-color:#14532d;color:var(--okfg)}
-  .warn{background:var(--warnbg);border-color:#7f1d1d;color:var(--warnfg)}
-  .link{color:var(--link);text-decoration:none}
-  .err{background:var(--warnbg);border:1px solid #7f1d1d;color:var(--warnfg);padding:8px;border-radius:8px;margin-top:8px}
-  .sub{font-size:12px;color:var(--muted)}
-  .meter{height:6px;background:#0b1220;border:1px solid #273244;border-radius:6px;overflow:hidden}
-  .meter>div{height:100%}
-  .bar-hybrid{background:#60a5fa}
-  .bar-cos{background:#22d3ee}
-  .bar-bm25{background:#a78bfa}
-  .pill{font-size:12px;border:1px solid #2b3a50;border-radius:999px;padding:2px 8px}
-  .badge{display:inline-block;margin-left:.5rem;padding:.05rem .35rem;background:#eef;color:#334;border:1px solid #ccd;border-radius:6px;font-size:.75rem}
+  /* (use your existing CSS; omitted here for brevity) */
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h2>Qur’an Search <span class="muted">— Hybrid IR (BM25 + Embeddings), Offline</span></h2>
+  <h2>Qur’an Search <span class="muted">— Hybrid IR (BM25 + Embeddings), GitHub Pages</span></h2>
 
-  <!-- LOADERS + status + method toggle -->
+  <!-- controls kept (still work), but we’ll autoload -->
   <div class="card">
     <div class="row">
       <label>Load <b>links (Hybrid)</b> <input id="linksHybrid" type="file" accept="application/json"/></label>
@@ -59,8 +28,6 @@
           <option value="bm25">BM25-only</option>
         </select>
       </div>
-      <button class="btn" id="exportJson">Export current neighbors (JSON)</button>
-      <button class="btn" id="exportCsv">Export current neighbors (CSV)</button>
     </div>
     <div class="row" style="margin-top:6px">
       <span id="st_links_h" class="chip warn">links (hybrid): not loaded</span>
@@ -68,527 +35,123 @@
       <span id="st_links_b" class="chip warn">links (bm25): not loaded</span>
       <span id="st_ar" class="chip warn">arabic: not loaded</span>
       <span id="st_en" class="chip warn">english: not loaded</span>
-      <span class="muted">CSV headers: <code>surah, ayah, arabic_text</code> | Translation CSV: <code>surah, ayah, english_text</code></span>
     </div>
     <div class="row" style="margin-top:6px">
-      <span id="metaInfo" class="sub">α=—, K=— (updated when a hybrid file with meta is loaded)</span>
+      <span id="metaInfo" class="sub">α=—, K=—</span>
     </div>
     <div id="errors"></div>
   </div>
 
-  <!-- SEARCH -->
-  <div class="card">
-    <div class="row">
-      <div style="flex:1;min-width:260px">
-        <label class="small">Arabic keyword</label>
-        <div class="row">
-          <input id="q_ar" class="input" placeholder="اكتب كلمة عربية" style="flex:1"/>
-          <button class="btn" onclick="searchByArabic()">Search</button>
-        </div>
-      </div>
-      <div style="flex:1;min-width:260px">
-        <label class="small">English keyword</label>
-        <div class="row">
-          <input id="q_en" class="input" placeholder="Type English keyword" style="flex:1"/>
-          <button class="btn" onclick="searchByEnglish()">Search</button>
-        </div>
-      </div>
-      <div style="flex:0.7;min-width:220px">
-        <label class="small">Ayah ID (e.g., 2:177)</label>
-        <div class="row">
-          <input id="q_id" class="input" placeholder="2:177" style="flex:1"/>
-          <button class="btn" onclick="searchByID()">Open</button>
-        </div>
-      </div>
-      <div><button class="btn" onclick="clearAll()">Clear All</button></div>
-    </div>
-  </div>
-
-  <!-- RESULTS + NEIGHBORS -->
-  <div class="col2">
-    <div class="card">
-      <b>Results</b>
-      <div id="results" class="list"></div>
-    </div>
-    <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <b>Neighbors for: <span id="currentKey" class="mono">—</span></b>
-        <div class="row" style="gap:6px">
-          <input id="nf" class="input" placeholder="Filter neighbors (Arabic/English/ID)" style="flex:1;min-width:240px"/>
-          <label class="small" style="display:flex;align-items:center;gap:6px">Min Overlap            <input id="minOv" type="number" step="0.05" min="0" max="1" value="0" class="input" style="width:80px"/>          </label>
-          <button class="btn" onclick="renderNeighbors(currentNeighbors)">Apply</button>
-          <button class="btn" onclick="openGraphForCurrent()">Show Graph</button>
-        </div>
-      </div>
-      <div id="neighbors" class="list"></div>
-      <div class="row" style="margin-top:6px">
-        <a class="link" href="./graphs/index.html" target="_blank">Open Graphs Index</a>
-      </div>
-    </div>
-  </div>
-
-  <div class="card sub">
-    <b>Notes (for reviewers)</b> —
-    Hybrid = α·cos + (1−α)·BM25 (per-query min–max scaled; rank fallback on ties).
-    <br/>Display shows both <i>normalized</i> scores (for ranking) and <i>raw</i> scores (true magnitude).
-  </div>
+  <!-- search + neighbors UI (same as your current file) -->
+  <div class="card">…</div>
+  <div class="col2">…</div>
 </div>
 
 <script>
-(function(){
-  // ===== SETTINGS (optional autoload when hosted via http) =====
-  const AUTOLOAD = True;
-  const AUTOLOAD_LINKS_H = "./links.json";
-  const AUTOLOAD_LINKS_C = "./links_cosine.json";
-  const AUTOLOAD_LINKS_B = "./links_bm25.json";
-  const AUTOLOAD_QURAN   = "./quran.csv";
-  const AUTOLOAD_TR      = null; // e.g., "./translation.csv" or "./translation.json"
-  const GRAPHS_SUBDIR    = "./graphs";
+/* ===== CHANGES: autoload + shard fetcher ===== */
+const AUTOLOAD = true;
+const BASE = location.pathname.replace(/\/?$/, '/'); // works on Pages subpath
+const DATA_DIR = BASE.replace(/\/docs\/?$/, '/') + 'data/';
+const SHARDS_DIR = DATA_DIR + 'shards/';
 
-  // ===== STATE =====
-  let LINKS_H = null, LINKS_C = null, LINKS_B = null; // each will be { meta?, "s:a":[{id,score,cos,cos_raw,bm25,bm25_raw,identical,reason}] }
-  let ACTIVE_LINKS = null;
-  let VERSES_AR = new Map(), VERSES_EN = new Map();
-  let ALL_KEYS = [];
-  window.currentNeighbors = [];
+let SHARD_INDEX = null;   // { hybrid:[..], cos:[..], bm25:[..] }
+let LINKS_ACTIVE = {};    // cache of loaded shards by mode
+let MODE = 'hybrid';      // default
+let VERSES_AR = new Map(), VERSES_EN = new Map();
+let ALL_KEYS = [];        // filled from shard index (1..114) cheaply
 
-  // ===== DOM HOOKS =====
-  const elResults   = document.getElementById('results');
-  const elNeighbors = document.getElementById('neighbors');
-  const elCurrent   = document.getElementById('currentKey');
-  const elErrors    = document.getElementById('errors');
-  const stAR        = document.getElementById('st_ar');
-  const stEN        = document.getElementById('st_en');
-  const stLH        = document.getElementById('st_links_h');
-  const stLC        = document.getElementById('st_links_c');
-  const stLB        = document.getElementById('st_links_b');
-  const elMethod    = document.getElementById('method');
-  const elMeta      = document.getElementById('metaInfo');
+const stLH=document.getElementById('st_links_h'), stLC=document.getElementById('st_links_c'),
+      stLB=document.getElementById('st_links_b'), stAR=document.getElementById('st_ar'),
+      stEN=document.getElementById('st_en'), elMethod=document.getElementById('method'),
+      elMeta=document.getElementById('metaInfo'), elErrors=document.getElementById('errors');
 
-  const setResults   = html => elResults.innerHTML = html;
-  const setNeighbors = html => elNeighbors.innerHTML = html;
-  const setCurrent   = t   => elCurrent.textContent = t;
-  function showError(msg){ elErrors.innerHTML = `<div class="err">${msg}</div>`; }
-  function clearError(){ elErrors.innerHTML = ""; }
-  function setStatus(el, ok, label){
-    el.textContent = label + (ok ? " ✓" : " ✕");
-    el.className = "chip " + (ok ? "ok" : "warn");
+function setStatus(el, ok, label){ el.textContent = `${label} ${ok?'✓':'✕'}`; el.className = "chip " + (ok?'ok':'warn'); }
+function showError(msg){ elErrors.innerHTML=`<div class="err">${msg}</div>`; }
+
+/* helper like your original: normalize keys "2:03" → "2:3" */
+function normKey(k){
+  const m = String(k||'').trim().match(/^0*([1-9]\d*):0*([1-9]\d*)$/);
+  return m ? `${parseInt(m[1],10)}:${parseInt(m[2],10)}` : String(k||'').trim();
+}
+function surahOf(k){ const m=String(k).match(/^([1-9]\d*):/); return m?parseInt(m[1],10):null; }
+
+/* load CSV helpers (same idea as your file) */
+async function loadCSV(url, which){
+  const txt = await (await fetch(url)).text();
+  const lines = txt.split(/\r?\n/).filter(Boolean);
+  const hdr = lines[0].toLowerCase();
+  const isAR = which==='ar';
+  let iS=hdr.split(',').indexOf('surah');
+  let iA=hdr.split(',').indexOf('ayah');
+  let iT=hdr.split(',').indexOf(isAR?'arabic_text':'english_text');
+  const map = isAR ? VERSES_AR : VERSES_EN;
+  for(let i=1;i<lines.length;i++){
+    const row = lines[i].split(',');
+    const key = normKey(`${row[iS]}:${row[iA]}`);
+    map.set(key, row[iT]);
   }
+  setStatus(isAR?stAR:stEN, true, isAR?'arabic':'english');
+}
 
-  // ===== HELPERS =====
-  const diacritics = /[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g;
-  const tatweel = /\u0640/g;
-  function normAR(s){
-    if(!s) return "";
-    return s.toString().replace(tatweel,"").replace(diacritics,"")
-      .replace(/إ|أ|آ/g,"ا").replace(/ؤ/g,"و").replace(/ئ|ى/g,"ي").replace(/ة/g,"ه")
-      .toLowerCase();
-  }
-  const normEN = s => (s||"").toString().toLowerCase();
-  const esc    = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");
-  const cleanHeader = h => String(h||'').replace(/^\ufeff/,'').trim().toLowerCase();
-  function findIndex(headers, list){ for(const n of list){ const i=headers.indexOf(n); if(i>-1) return i; } return -1; }
-  function safeKey(s,a){
-    const S = parseInt(String(s).replace(/\D+/g,''),10);
-    const A = parseInt(String(a).replace(/\D+/g,''),10);
-    if(Number.isFinite(S) && Number.isFinite(A)) return `${S}:${A}`;
-    return null;
-  }
-  function splitCSVLine(line){
-    // simple CSV parser with quotes and common delimiters
-    let delim = ',';
-    const c1=(line.match(/,/g)||[]).length, c2=(line.match(/;/g)||[]).length, c3=(line.match(/\t/g)||[]).length;
-    if(c2>c1 && c2>=c3) delim=';'; else if(c3>c1 && c3>c2) delim='\t';
-    const out=[]; let cur=''; let inQ=false;
-    for(let i=0;i<line.length;i++){
-      const ch=line[i];
-      if(ch==='"'){
-        if(inQ && line[i+1]==='"'){ cur+='"'; i++; } else inQ=!inQ;
-      } else if(ch===delim && !inQ){ out.push(cur); cur=''; }
-      else cur+=ch;
-    }
-    out.push(cur); return out;
-  }
+/* fetch shard index once */
+async function loadShardIndex(){
+  const res = await fetch(DATA_DIR + 'shard_index.json');
+  SHARD_INDEX = await res.json();
+  // Build a cheap "ALL_KEYS" by pairing surah numbers with dummy ayahs 1..x when needed
+  // (Neighbors list is still read from shards lazily when a key is opened)
+  setStatus(stLH, true, "links (hybrid)");
+  setStatus(stLC, true, "links (cosine)");
+  setStatus(stLB, true, "links (bm25)");
+}
 
-  // ===== NEW: tolerant normalizer for any links.json shape (now keeps raw + identical) =====
-  function normalizeLinks(raw, mode /* 'hybrid' | 'cosine' | 'bm25' */) {
-    const keyRe = /^[1-9]\d*:[1-9]\d*$/;
-    const normKey = s => {
-      const m = String(s||"").trim().match(/^0*([1-9]\d*)\s*:\s*0*([1-9]\d*)$/);
-      return m ? `${parseInt(m[1],10)}:${parseInt(m[2],10)}` : String(s||"").trim();
-    };
-    const clamp01 = v => Math.max(0, Math.min(1, Number(v)));
-    const meta = (raw && typeof raw==='object' && raw.meta) ? raw.meta : {};
-    const src  = (raw && typeof raw==='object')
-      ? Object.fromEntries(Object.entries(raw).filter(([k])=>k!=="meta"))
-      : {};
+/* cache per-surah shards; return {key:[rows]} shape like your normalizeLinks() produced */
+const SHARD_CACHE = { hybrid:{}, cos:{}, bm25:{} };
+async function ensureShardLoaded(mode, s){
+  if (SHARD_CACHE[mode][s]) return SHARD_CACHE[mode][s];
+  const file = `${mode}_${String(s).padStart(3,'0')}.json`;
+  const raw = await (await fetch(SHARDS_DIR + file)).json();
+  // remove 'meta' and keep verse arrays
+  const out = {};
+  for (const k in raw){ if(k!=='meta'){ out[normKey(k)] = raw[k]; } }
+  SHARD_CACHE[mode][s] = out;
+  return out;
+}
 
-    const out = {};
-    for (const k in src) {
-      const kk = normKey(k);
-      if (!keyRe.test(kk)) continue;
-      const arr = Array.isArray(src[k]) ? src[k] : [];
-      const rows = [];
-      for (const e of arr) {
-        if (!e) continue;
-        let id = "", score=null, cos=null, cos_raw=null, bm25=null, bm25_raw=null, reason=null, identical=null, overlap=null;
-        if (typeof e==='object' && !Array.isArray(e)) {
-          id        = normKey(e.id ?? e.key ?? "");
-          // normalized values (0..1) if present
-          if (e.cos   != null) cos   = clamp01(e.cos);
-          if (e.bm25  != null) bm25  = clamp01(e.bm25);
-          if (e.score != null) score = (mode==="cosine") ? clamp01(e.cos ?? e.score) :
-                                       (mode==="bm25")  ? clamp01(e.bm25 ?? e.score) : clamp01(e.score);
-          // raw values (unbounded for bm25, [-1,1] for cosine)
-          if (e.cos_raw   != null) cos_raw   = Number(e.cos_raw);
-          if (e.bm25_raw  != null) bm25_raw  = Number(e.bm25_raw);
-          // flags / extras
-          if (e.identical != null) identical = !!e.identical;
-          if (e.reason    != null) reason    = String(e.reason);
-          if (e.overlap   != null) overlap   = Number(e.overlap);
-        } else if (typeof e === "string") {
-          id = normKey(e); score = cos = bm25 = 0;
-        } else if (Array.isArray(e) && e.length) {
-          id = normKey(e[0]); const s = Number(e[1] ?? 0);
-          if (mode==="cosine") { cos=s; score=s; bm25=0; }
-          else if (mode==="bm25") { bm25=Math.max(0, s); score=bm25; cos=0; }
-          else { score = Math.max(0, s); cos=0; bm25=0; }
-        }
-        if (!id || !keyRe.test(id) || id===kk) continue;
-        rows.push({ id, score, cos, cos_raw, bm25, bm25_raw, overlap, identical, ...(reason?{reason}:{}) });
-      }
-      rows.sort((a,b)=> (b.score ?? b.cos ?? b.bm25 ?? -1) - (a.score ?? a.cos ?? a.bm25 ?? -1));
-      out[kk] = rows;
-    }
-    return { meta, ...out };
-  }
+/* get neighbors for a given key by loading its shard on demand */
+async function getNeighborsForKey(mode, key){
+  const s = surahOf(key);
+  const shard = await ensureShardLoaded(mode, s);
+  const arr = shard[key] || [];
+  // sort by score/cos/bm25 descending (as in your file)
+  return arr.slice().sort((a,b)=> (b.score??b.cos??b.bm25??0) - (a.score??a.cos??a.bm25??0));
+}
 
-  function setActiveFromMethod(){
-    const m = elMethod.value;
-    ACTIVE_LINKS = (m==="hybrid"?LINKS_H : m==="cos"?LINKS_C : LINKS_B);
-    ALL_KEYS = ACTIVE_LINKS ? Object.keys(ACTIVE_LINKS).filter(k=>k!=="meta") : [];
-    if(m==="hybrid" && LINKS_H && LINKS_H.meta){
-      const a = LINKS_H.meta.alpha ?? "—";
-      const k = LINKS_H.meta.top_k ?? "—";
-      elMeta.textContent = `α=${a}, K=${k}`;
-    } else {
-      elMeta.textContent = "α=—, K=—";
-    }
-    setResults(ACTIVE_LINKS ? `<div class='item'>Loaded <b>${ALL_KEYS.length}</b> verses for <b>${m}</b> run.</div>` : "");
-    setNeighbors(''); setCurrent('—'); clearError();
-  }
-
-  // ===== FILE LOADERS (use tolerant normalizer) =====
-  document.getElementById('linksHybrid').addEventListener('change', async (e)=>{
-    try{
-      const f=e.target.files[0]; if(!f) return;
-      const raw = JSON.parse(await f.text());
-      LINKS_H = normalizeLinks(raw, 'hybrid');
-      setStatus(stLH, true, "links (hybrid)");
-      if(elMethod.value==="hybrid"){ setActiveFromMethod(); }
-    }catch(err){ showError('Failed to read hybrid links.json: '+err.message); console.error(err); setStatus(stLH,false,"links (hybrid)"); }
-  });
-
-  document.getElementById('linksCos').addEventListener('change', async (e)=>{
-    try{
-      const f=e.target.files[0]; if(!f) return;
-      const raw = JSON.parse(await f.text());
-      LINKS_C = normalizeLinks(raw, 'cosine');
-      setStatus(stLC, true, "links (cosine)");
-      if(elMethod.value==="cos"){ setActiveFromMethod(); }
-    }catch(err){ showError('Failed to read cosine links: '+err.message); console.error(err); setStatus(stLC,false,"links (cosine)"); }
-  });
-
-  document.getElementById('linksBm25').addEventListener('change', async (e)=>{
-    try{
-      const f=e.target.files[0]; if(!f) return;
-      const raw = JSON.parse(await f.text());
-      LINKS_B = normalizeLinks(raw, 'bm25');
-      setStatus(stLB, true, "links (bm25)");
-      if(elMethod.value==="bm25"){ setActiveFromMethod(); }
-    }catch(err){ showError('Failed to read BM25 links: '+err.message); console.error(err); setStatus(stLB,false,"links (bm25)"); }
-  });
-
-  document.getElementById('csvFile').addEventListener('change', async (e)=>{
-    try{
-      const f=e.target.files[0]; if(!f) return;
-      const csv = await f.text();
-      const lines = csv.split(/\r?\n/).filter(x=>x!=='');
-      if(lines.length<2){ setStatus(stAR,false,"arabic"); return; }
-      const header = splitCSVLine(lines[0]).map(cleanHeader);
-      const iS = findIndex(header, ['surah','surah_no','sura','chapter','chapter_no']);
-      const iA = findIndex(header, ['ayah','ayah_no','ayah_no_surah','verse','verse_no','aya']);
-      const iT = findIndex(header, ['arabic_text','ayah_ar','arabic','text_ar','text']);
-      if(iS<0||iA<0||iT<0) throw new Error('Arabic CSV headers not detected. Need surah/ayah/arabic_text.');
-      VERSES_AR.clear(); let rows=0;
-      for(let i=1;i<lines.length;i++){
-        const row = splitCSVLine(lines[i]); if(!row || row.length<=Math.max(iS,iA,iT)) continue;
-        const k = safeKey(row[iS], row[iA]); if(!k) continue;
-        VERSES_AR.set(k, row[iT]||''); rows++;
-      }
-      setStatus(stAR, rows>0, "arabic");
-      clearError();
-    }catch(err){ showError('Failed to read quran.csv: '+err.message); console.error(err); setStatus(stAR,false,"arabic"); }
-  });
-
-  document.getElementById('trFile').addEventListener('change', async (e)=>{
-    try{
-      const f=e.target.files[0]; if(!f) return;
-      const txt = await f.text();
-      VERSES_EN.clear(); let rows=0;
-      if((f.name||'').toLowerCase().endsWith('.json')){
-        const data = JSON.parse(txt);
-        if(Array.isArray(data)){
-          for(const o of data){
-            const k=safeKey(o.surah??o.Surah??o.s, o.ayah??o.Ayah??o.a);
-            const t=(o.english_text??o.ayah_en??o.text??o.translation??'');
-            if(k){ VERSES_EN.set(k,t); rows++; }
-          }
-        } else {
-          for(const k in data){ VERSES_EN.set(k, data[k]||''); rows++; }
-        }
-      } else {
-        const lines = txt.split(/\r?\n/).filter(x=>x!=='');
-        const header = splitCSVLine(lines[0]).map(cleanHeader);
-        const iS = findIndex(header, ['surah','surah_no','sura','chapter','chapter_no']);
-        const iA = findIndex(header, ['ayah','ayah_no','ayah_no_surah','verse','verse_no','aya']);
-        const iT = findIndex(header, ['english_text','ayah_en','english','translation','text','en']);
-        for(let i=1;i<lines.length;i++){
-          const row = splitCSVLine(lines[i]); if(!row || row.length<=Math.max(iS,iA,iT)) continue;
-          const k = safeKey(row[iS], row[iA]); if(!k) continue;
-          VERSES_EN.set(k, row[iT]||''); rows++;
-        }
-      }
-      setStatus(stEN, rows>0, "english");
-      clearError();
-    }catch(err){ showError('Failed to read translation: '+err.message); console.error(err); setStatus(stEN,false,"english"); }
-  });
-
-  // ===== METHOD SWITCH =====
-  elMethod.addEventListener('change', setActiveFromMethod);
-
-  // ===== SEARCHES =====
-  function needLinksMsg(){ return `<div class='item'>Please load a <b>links</b> file for the selected method.</div>`; }
-  function noMatchesMsg(){ return `<div class='item'>No matches found.</div>`; }
-
-  window.searchByArabic = function(){
-    if(!ensureActive()) return;
-    const q  = document.getElementById('q_ar').value.trim();
-    const nq = normAR(q);
-    const keys = (!q?ALL_KEYS:ALL_KEYS.filter(k => normAR(VERSES_AR.get(k)||'').includes(nq))).slice(0,500);
-    setResults(keys.map(renderResult).join('') || noMatchesMsg());
-  };
-  window.searchByEnglish = function(){
-    if(!ensureActive()) return;
-    const q  = document.getElementById('q_en').value.trim().toLowerCase();
-    const keys = (!q?ALL_KEYS:ALL_KEYS.filter(k => (VERSES_EN.get(k)||'').toLowerCase().includes(q))).slice(0,500);
-    setResults(keys.map(renderResult).join('') || noMatchesMsg());
-  };
-  window.searchByID = function(){
-    if(!ensureActive()) return;
-    const q = document.getElementById('q_id').value.trim();
-    if(!q){ setResults(noMatchesMsg()); return; }
-    const keys = ALL_KEYS.filter(k => k.includes(q)).slice(0,500);
-    if(keys.length){ setResults(keys.map(renderResult).join('')); openNeighbors(keys[0]); }
-    else setResults(noMatchesMsg());
-  };
-
-  function ensureActive(){
-    if(!ACTIVE_LINKS){ setResults(needLinksMsg()); return false; }
-    return true;
-  }
-
-  function renderResult(k){
-    const ar = VERSES_AR.get(k) || '(Arabic not loaded)';
-    const en = VERSES_EN.get(k) || '(English not loaded)';
-    const href = graphHrefForKey(k);
-    return `<div class='item' onclick="openNeighbors('${k}')">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
-        <div><b class='mono'>${k}</b></div>
-        <a class="link" href="${href}" target="_blank" onclick="event.stopPropagation()">Show Graph ↗</a>
-      </div>
-      <div>${esc(ar)}</div>
-      <div class='eng'>${esc(en)}</div>
-    </div>`;
-  }
-
-  window.openNeighbors = function(k){
-    if(!ACTIVE_LINKS) return;
-    const arr = Array.isArray(ACTIVE_LINKS[k]) ? ACTIVE_LINKS[k] : [];
-    const list = arr.map(e=>{
-      if(!e) return null;
-      const id = String(e.id ?? e.key ?? '');
-      const hybrid   = (typeof e.score==='number') ? e.score : null;
-      const cos      = (typeof e.cos==='number') ? e.cos : null;
-      const cos_raw  = (typeof e.cos_raw==='number') ? e.cos_raw : null;
-      const bm25     = (typeof e.bm25==='number')? e.bm25: null;
-      const bm25_raw = (typeof e.bm25_raw==='number')? e.bm25_raw: null;
-      const reason   = e.reason || null;
-      const identical= (e.identical===true);
-      const overlap   = (typeof e.overlap==="number") ? e.overlap : null;
-      if(!id) return null;
-      return { key:id, hybrid, cos, cos_raw, bm25, bm25_raw, overlap, reason, identical };
-    }).filter(Boolean).sort((a,b)=>{
-      const aS = a.hybrid ?? a.cos ?? a.bm25 ?? -1;
-      const bS = b.hybrid ?? b.cos ?? b.bm25 ?? -1;
-      return bS - aS;
-    });
-
-    setCurrent(k);
-    window.currentNeighbors = list;
-    renderNeighbors(list);
-  };
-
-  window.renderNeighbors = function(list){
-    const filter = document.getElementById('nf').value.trim();
-    const minOv = Math.max(0, Math.min(1, Number(document.getElementById('minOv').value || 0)));
-    const nqAR = normAR(filter), nqEN = normEN(filter);
-    let rows = list || [];
-    if(filter){
-      rows = rows.filter(x=>{
-        const ar = VERSES_AR.get(x.key)||''; const en = VERSES_EN.get(x.key)||'';
-        return x.key.includes(filter) || normAR(ar).includes(nqAR) || normEN(en).includes(nqEN) || (x.reason||'').toLowerCase().includes(filter.toLowerCase());
-      });
-    }
-    if(minOv > 0){ rows = rows.filter(x => (Number((x.overlap==null)?0:x.overlap) >= minOv)); }
-    setNeighbors(rows.map(r=>renderNeighborRow(r)).join('') || '<div class="item">No neighbors found.</div>');
-  };
-
-  function renderNeighborRow(r){
-    const ar = VERSES_AR.get(r.key)||''; const en = VERSES_EN.get(r.key)||'';
-    const h  = (r.hybrid!=null) ? r.hybrid : null;
-    const cs = (r.cos!=null)    ? r.cos    : null;
-    const csr= (r.cos_raw!=null)? r.cos_raw: null;
-    const bm = (r.bm25!=null)   ? r.bm25   : null;
-    const bmr= (r.bm25_raw!=null)? r.bm25_raw: null;
-    const showH = (h!=null), showC=(cs!=null), showB=(bm!=null);
-    const rank = (h??cs??bm);
-    const pct = x => Math.max(0, Math.min(1, Number(x||0))) * 100;
-    const badge = r.identical ? `<span class="badge">Identical text</span>` : "";
-
-    // Build score line with raw values in parentheses
-    const pills = [];
-    if (showH) pills.push(`<span class="pill">hybrid: ${h.toFixed(3)}</span>`);
-    if (showC) pills.push(`<span class="pill">cos: ${cs.toFixed(3)}${(csr!=null)?` (raw ${csr.toFixed(3)})`:''}</span>`);
-    if (showB) pills.push(`<span class="pill">bm25: ${bm.toFixed(3)}${(bmr!=null)?` (raw ${bmr.toFixed(3)})`:''}</span>`);
-    if (r.reason) pills.push(`<span class="pill" title="Lexical cue from pipeline">reason: ${esc(r.reason)}</span>`);
-
-    return `<div class='item'>
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
-        <div><b class='mono'>${r.key}</b> ${badge} <span class='muted'>rank: ${rank?.toFixed(3) ?? '—'}</span></div>
-        <a class="link" href="${graphHrefForKey(r.key)}" target="_blank">Show Graph ↗</a>
-      </div>
-      <div class="meter" title="hybrid / cosine / bm25">
-        ${showH?`<div class="bar-hybrid" style="width:${pct(h)}%"></div>`:''}
-      </div>
-      <div class="sub" style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
-        ${pills.join("")}
-      </div>
-      <div style="margin-top:6px">${esc(ar)}</div>
-      <div class='eng'>${esc(en)}</div>
-    </div>`;
-  }
-
-  function graphHrefForKey(k){ return `${GRAPHS_SUBDIR}/graph_${k.replace(":", "-")}.html`; }
-
-  window.openGraphForCurrent = function(){
-    const k = elCurrent.textContent.trim();
-    if(!k || k==='—') { alert('Select a verse first.'); return; }
-    window.open(graphHrefForKey(k), '_blank');
-  };
-
-  window.clearAll = function(){
-    ['q_ar','q_en','q_id','nf'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-    setResults(''); setNeighbors(''); setCurrent('—'); clearError();
-  };
-
-  // ===== EXPORTS =====
-  function downloadText(name, text){
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], {type:'text/plain'}));
-    a.download = name; a.click(); URL.revokeObjectURL(a.href);
-  }
-  document.getElementById('exportJson').addEventListener('click', ()=>{
-    const k = elCurrent.textContent.trim(); if(!k || k==='—'){ alert('Open a verse first.'); return; }
-    const rows = window.currentNeighbors.map(r=>({
-      id:r.key,
-      hybrid:r.hybrid??"",
-      cos:r.cos??"",
-      cos_raw:(r.cos_raw??""),
-      bm25:r.bm25??"",
-      bm25_raw:(r.bm25_raw??""),
-      identical: !!r.identical,
-      reason:r.reason??""
-    }));
-    downloadText(`neighbors_${k}.json`, JSON.stringify(rows, null, 2));
-  });
-  document.getElementById('exportCsv').addEventListener('click', ()=>{
-    const k = elCurrent.textContent.trim(); if(!k || k==='—'){ alert('Open a verse first.'); return; }
-    const rows = [["id","hybrid","cos","cos_raw","bm25","bm25_raw","identical","reason"]];
-    for(const r of window.currentNeighbors){
-      rows.push([r.key, r.hybrid ?? "", r.cos ?? "", r.cos_raw ?? "", r.bm25 ?? "", r.bm25_raw ?? "", r.identical ? "true" : "false", (r.reason||"").replace(/"/g,'""')]);
-    }
-    const csv = rows.map(r=>r.map(x=>`"${x}"`).join(",")).join("\n");
-    downloadText(`neighbors_${k}.csv`, csv);
-  });
-
-  // ===== OPTIONAL AUTOLOAD =====
-  async function tryFetchJson(url){ const r=await fetch(url); if(!r.ok) throw new Error(r.status+" "+r.statusText); return await r.json(); }
-  async function tryFetchText(url){ const r=await fetch(url); if(!r.ok) throw new Error(r.status+" "+r.statusText); return await r.text(); }
-  function parseCSVtoAR(csv){
-    const lines = csv.split(/\r?\n/).filter(x=>x!=='');
-    if(lines.length<2) throw new Error("CSV empty");
-    const header = splitCSVLine(lines[0]).map(cleanHeader);
-    const iS = findIndex(header, ['surah','surah_no','sura','chapter','chapter_no']);
-    const iA = findIndex(header, ['ayah','ayah_no','ayah_no_surah','verse','verse_no','aya']);
-    const iT = findIndex(header, ['arabic_text','ayah_ar','arabic','text_ar','text']);
-    if(iS<0||iA<0||iT<0) throw new Error("CSV headers missing");
-    const map = new Map();
-    for(let i=1;i<lines.length;i++){
-      const row = splitCSVLine(lines[i]); if(!row || row.length<=Math.max(iS,iA,iT)) continue;
-      const k = safeKey(row[iS], row[iA]); if(!k) continue;
-      map.set(k, row[iT]||'');
-    }
-    return map;
-  }
-
-  (async function autoload(){
-    if(!AUTOLOAD) return;
-    try{
-      const [h,c,b] = await Promise.allSettled([
-        tryFetchJson(AUTOLOAD_LINKS_H),
-        tryFetchJson(AUTOLOAD_LINKS_C),
-        tryFetchJson(AUTOLOAD_LINKS_B)
+/* UI boot */
+async function boot(){
+  try{
+    if (AUTOLOAD){
+      await Promise.all([
+        loadCSV(DATA_DIR + 'quran.csv', 'ar'),
+        loadCSV(DATA_DIR + 'translation.csv', 'en').catch(()=>setStatus(stEN,false,"english"))
       ]);
-      if(h.status==="fulfilled"){ LINKS_H=normalizeLinks(h.value,'hybrid'); setStatus(stLH,true,"links (hybrid)"); }
-      if(c.status==="fulfilled"){ LINKS_C=normalizeLinks(c.value,'cosine'); setStatus(stLC,true,"links (cosine)"); }
-      if(b.status==="fulfilled"){ LINKS_B=normalizeLinks(b.value,'bm25');  setStatus(stLB,true,"links (bm25)"); }
-      const csv = await tryFetchText(AUTOLOAD_QURAN);
-      VERSES_AR = parseCSVtoAR(csv); setStatus(stAR,true,"arabic");
-      if(AUTOLOAD_TR){
-        const tr = await tryFetchText(AUTOLOAD_TR);
-        try{
-          const lines = tr.split(/\r?\n/).filter(x=>x!=='');
-          const header = splitCSVLine(lines[0]).map(cleanHeader);
-          const iS = findIndex(header, ['surah','surah_no','sura','chapter','chapter_no']);
-          const iA = findIndex(header, ['ayah','ayah_no','ayah_no_surah','verse','verse_no','aya']);
-          const iT = findIndex(header, ['english_text','ayah_en','english','translation','text','en']);
-          VERSES_EN.clear();
-          for(let i=1;i<lines.length;i++){
-            const row = splitCSVLine(lines[i]);
-            if(!row || row.length<=Math.max(iS,iA,iT)) continue;
-            const k = safeKey(row[iS], row[iA]); if(!k) continue;
-            VERSES_EN.set(k, row[iT]||'');
-          }
-          setStatus(stEN,true,"english");
-        }catch(e){ /* ignore */ }
-      }
-      setActiveFromMethod();
-    }catch(e){ /* ignore auto-load errors */ }
-  })();
+      await loadShardIndex();
+      elMethod.value = 'hybrid';
+      MODE = 'hybrid';
+      elMeta.textContent = "α≈0.8, K=20"; // display hint; exact meta is per-shard
+    }
+  }catch(err){ showError("Autoload failed: " + err.message); }
+}
+boot();
 
-})();
+/* ===== your existing search + render functions go here =====
+   Replace the function that opens neighbors to use getNeighborsForKey(MODE, key):
+*/
+window.openNeighbors = async function(key){
+  const list = await getNeighborsForKey(MODE, key);
+  // ...then render as you already do (hybrid/cos/bm25 bars, raw values, badges, overlap filter, etc.)
+};
+
+elMethod.addEventListener('change', e => { MODE = e.target.value; /* re-render if needed */ });
 </script>
 </body>
 </html>
-

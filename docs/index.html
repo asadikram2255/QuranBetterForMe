@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Qur’an Search — Hybrid IR (BM25 + Embeddings)</title>
+<style>
+  /* (use your existing CSS; omitted here for brevity) */
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>Qur’an Search <span class="muted">— Hybrid IR (BM25 + Embeddings), GitHub Pages</span></h2>
+
+  <!-- controls kept (still work), but we’ll autoload -->
+  <div class="card">
+    <div class="row">
+      <label>Load <b>links (Hybrid)</b> <input id="linksHybrid" type="file" accept="application/json"/></label>
+      <label>Load <b>links (Cosine)</b> <input id="linksCos" type="file" accept="application/json"/></label>
+      <label>Load <b>links (BM25)</b> <input id="linksBm25" type="file" accept="application/json"/></label>
+      <label>Load <b>quran.csv</b> <input id="csvFile" type="file" accept="text/csv"/></label>
+      <label>Load <b>translation</b> <input id="trFile" type="file" accept="application/json,text/csv"/></label>
+      <div>
+        <label class="small">Method</label>
+        <select id="method">
+          <option value="hybrid">Hybrid (α·cos + (1−α)·BM25)</option>
+          <option value="cos">Cosine-only</option>
+          <option value="bm25">BM25-only</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <span id="st_links_h" class="chip warn">links (hybrid): not loaded</span>
+      <span id="st_links_c" class="chip warn">links (cosine): not loaded</span>
+      <span id="st_links_b" class="chip warn">links (bm25): not loaded</span>
+      <span id="st_ar" class="chip warn">arabic: not loaded</span>
+      <span id="st_en" class="chip warn">english: not loaded</span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <span id="metaInfo" class="sub">α=—, K=—</span>
+    </div>
+    <div id="errors"></div>
+  </div>
+
+  <!-- search + neighbors UI (same as your current file) -->
+  <div class="card">…</div>
+  <div class="col2">…</div>
+</div>
+
+<script>
+/* ===== CHANGES: autoload + shard fetcher ===== */
+const AUTOLOAD = true;
+const BASE = location.pathname.replace(/\/?$/, '/'); // works on Pages subpath
+const DATA_DIR = BASE.replace(/\/docs\/?$/, '/') + 'data/';
+const SHARDS_DIR = DATA_DIR + 'shards/';
+
+let SHARD_INDEX = null;   // { hybrid:[..], cos:[..], bm25:[..] }
+let LINKS_ACTIVE = {};    // cache of loaded shards by mode
+let MODE = 'hybrid';      // default
+let VERSES_AR = new Map(), VERSES_EN = new Map();
+let ALL_KEYS = [];        // filled from shard index (1..114) cheaply
+
+const stLH=document.getElementById('st_links_h'), stLC=document.getElementById('st_links_c'),
+      stLB=document.getElementById('st_links_b'), stAR=document.getElementById('st_ar'),
+      stEN=document.getElementById('st_en'), elMethod=document.getElementById('method'),
+      elMeta=document.getElementById('metaInfo'), elErrors=document.getElementById('errors');
+
+function setStatus(el, ok, label){ el.textContent = `${label} ${ok?'✓':'✕'}`; el.className = "chip " + (ok?'ok':'warn'); }
+function showError(msg){ elErrors.innerHTML=`<div class="err">${msg}</div>`; }
+
+/* helper like your original: normalize keys "2:03" → "2:3" */
+function normKey(k){
+  const m = String(k||'').trim().match(/^0*([1-9]\d*):0*([1-9]\d*)$/);
+  return m ? `${parseInt(m[1],10)}:${parseInt(m[2],10)}` : String(k||'').trim();
+}
+function surahOf(k){ const m=String(k).match(/^([1-9]\d*):/); return m?parseInt(m[1],10):null; }
+
+/* load CSV helpers (same idea as your file) */
+async function loadCSV(url, which){
+  const txt = await (await fetch(url)).text();
+  const lines = txt.split(/\r?\n/).filter(Boolean);
+  const hdr = lines[0].toLowerCase();
+  const isAR = which==='ar';
+  let iS=hdr.split(',').indexOf('surah');
+  let iA=hdr.split(',').indexOf('ayah');
+  let iT=hdr.split(',').indexOf(isAR?'arabic_text':'english_text');
+  const map = isAR ? VERSES_AR : VERSES_EN;
+  for(let i=1;i<lines.length;i++){
+    const row = lines[i].split(',');
+    const key = normKey(`${row[iS]}:${row[iA]}`);
+    map.set(key, row[iT]);
+  }
+  setStatus(isAR?stAR:stEN, true, isAR?'arabic':'english');
+}
+
+/* fetch shard index once */
+async function loadShardIndex(){
+  const res = await fetch(DATA_DIR + 'shard_index.json');
+  SHARD_INDEX = await res.json();
+  // Build a cheap "ALL_KEYS" by pairing surah numbers with dummy ayahs 1..x when needed
+  // (Neighbors list is still read from shards lazily when a key is opened)
+  setStatus(stLH, true, "links (hybrid)");
+  setStatus(stLC, true, "links (cosine)");
+  setStatus(stLB, true, "links (bm25)");
+}
+
+/* cache per-surah shards; return {key:[rows]} shape like your normalizeLinks() produced */
+const SHARD_CACHE = { hybrid:{}, cos:{}, bm25:{} };
+async function ensureShardLoaded(mode, s){
+  if (SHARD_CACHE[mode][s]) return SHARD_CACHE[mode][s];
+  const file = `${mode}_${String(s).padStart(3,'0')}.json`;
+  const raw = await (await fetch(SHARDS_DIR + file)).json();
+  // remove 'meta' and keep verse arrays
+  const out = {};
+  for (const k in raw){ if(k!=='meta'){ out[normKey(k)] = raw[k]; } }
+  SHARD_CACHE[mode][s] = out;
+  return out;
+}
+
+/* get neighbors for a given key by loading its shard on demand */
+async function getNeighborsForKey(mode, key){
+  const s = surahOf(key);
+  const shard = await ensureShardLoaded(mode, s);
+  const arr = shard[key] || [];
+  // sort by score/cos/bm25 descending (as in your file)
+  return arr.slice().sort((a,b)=> (b.score??b.cos??b.bm25??0) - (a.score??a.cos??a.bm25??0));
+}
+
+/* UI boot */
+async function boot(){
+  try{
+    if (AUTOLOAD){
+      await Promise.all([
+        loadCSV(DATA_DIR + 'quran.csv', 'ar'),
+        loadCSV(DATA_DIR + 'translation.csv', 'en').catch(()=>setStatus(stEN,false,"english"))
+      ]);
+      await loadShardIndex();
+      elMethod.value = 'hybrid';
+      MODE = 'hybrid';
+      elMeta.textContent = "α≈0.8, K=20"; // display hint; exact meta is per-shard
+    }
+  }catch(err){ showError("Autoload failed: " + err.message); }
+}
+boot();
+
+/* ===== your existing search + render functions go here =====
+   Replace the function that opens neighbors to use getNeighborsForKey(MODE, key):
+*/
+window.openNeighbors = async function(key){
+  const list = await getNeighborsForKey(MODE, key);
+  // ...then render as you already do (hybrid/cos/bm25 bars, raw values, badges, overlap filter, etc.)
+};
+
+elMethod.addEventListener('change', e => { MODE = e.target.value; /* re-render if needed */ });
+</script>
+</body>
+</html>

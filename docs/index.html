@@ -30,7 +30,7 @@
   .link{color:var(--link);text-decoration:none}
   .err{background:var(--warnbg);border:1px solid #7f1d1d;color:var(--warnfg);padding:8px;border-radius:8px;margin-top:8px}
   .sub{font-size:12px;color:var(--muted)}
-  .meter{height:6px;background:#0b1220;border:1px solid #273244;border-radius:6px;overflow:hidden}
+  .meter{height:6px;background:#0b1220;border:1px solid #273244;border-radius:6px;overflow:hidden;margin-top:4px}
   .meter>div{height:100%}
   .bar-hybrid{background:#60a5fa}
   .bar-cos{background:#22d3ee}
@@ -63,7 +63,7 @@
       <span id="st_links_b" class="chip warn">links (bm25): not loaded</span>
       <span id="st_ar" class="chip warn">arabic: not loaded</span>
       <span id="st_en" class="chip warn">english: not loaded</span>
-      <span class="muted">Autoloading from <code>/json/</code> and <code>/data/</code> in this repo</span>
+      <span class="muted">Autoloading from <code>/json/</code> and <code>/Database/</code> (via raw.githubusercontent.com)</span>
     </div>
     <div class="row" style="margin-top:6px">
       <span id="metaInfo" class="sub">α≈0.8, K=20 (display)</span>
@@ -127,27 +127,28 @@
 
 <script>
 (function(){
-  // ====== AUTOCONFIG (works on GitHub Pages or raw.githubusercontent) ======
+  // ====== YOUR REPO (absolute RAW URLs) ======
   const REPO = "asadikram2255/QuranBetterForMe";
-  const onPages = /github\.io/.test(location.host);
-  const basePath = location.pathname.replace(/\/index\.html?$/,'').replace(/\/$/,'') + '/';
-  const REL_BASE = onPages ? basePath : null;  // e.g. /QuranBetterForMe/
-  const RAW_BASE = "https://raw.githubusercontent.com/"+REPO+"/main/";
+  const RAW_BASE = "https://raw.githubusercontent.com/" + REPO + "/main/";
 
-  const DATA_DIR   = (REL_BASE ? REL_BASE : "") + "data/";
-  const JSON_DIR   = (REL_BASE ? REL_BASE : "") + "json/";
-  const DATA_QURAN = (REL_BASE ? DATA_DIR : RAW_BASE+"data/") + "quran.csv";
-  const DATA_TR    = (REL_BASE ? DATA_DIR : RAW_BASE+"data/") + "translation.csv";
+  // Data in /Database/
+  const ARABIC_CSV_URLS = [
+    RAW_BASE + "Database/quran.csv"
+  ];
+  const ENGLISH_CSV_URLS = [
+    RAW_BASE + "Database/English%20Translation%20-%20The%20Quran%20Dataset.csv", // your file
+    RAW_BASE + "Database/translation.csv"                                         // fallback if you rename later
+  ];
 
-  function jsonShardUrl(mode, s){
-    const fname = `${mode}_${String(s).padStart(3,'0')}.json`;
-    return (REL_BASE ? JSON_DIR : RAW_BASE+"json/") + fname;
+  // Shards in /json/ named hybrid_001.json, cos_001.json, bm25_001.json
+  function jsonShardUrl(mode, surah){
+    return RAW_BASE + "json/" + `${mode}_${String(surah).padStart(3,'0')}.json`;
   }
 
   // ====== STATE ======
   let MODE = "hybrid";
   let VERSES_AR = new Map(), VERSES_EN = new Map();
-  let ALL_KEYS = [];             // filled after Arabic CSV load
+  let ALL_KEYS = [];
   const SHARD_CACHE = { hybrid:{}, cos:{}, bm25:{} };
   window.currentNeighbors = [];
 
@@ -167,7 +168,7 @@
   function setResults(html){ elResults.innerHTML = html; }
   function setNeighbors(html){ elNeighbors.innerHTML = html; }
   function setCurrent(t){ elCurrent.textContent = t; }
-  function showError(msg){ elErrors.innerHTML = `<div class="err">${msg}</div>`; }
+  function showError(msg){ elErrors.innerHTML = `<div class="err">${msg}</div>`; console.error(msg); }
   function clearError(){ elErrors.innerHTML = ""; }
 
   // ====== HELPERS ======
@@ -195,17 +196,31 @@
   function surahOfKey(k){ const m=String(k).match(/^([1-9]\d*):/); return m?parseInt(m[1],10):null; }
 
   // ====== LOADERS ======
-  async function fetchText(url){ const r=await fetch(url,{cache:"force-cache"}); if(!r.ok) throw new Error(`${r.status} ${r.statusText} → ${url}`); return r.text(); }
-  async function fetchJSON(url){ const r=await fetch(url,{cache:"force-cache"}); if(!r.ok) throw new Error(`${r.status} ${r.statusText} → ${url}`); return r.json(); }
+  async function fetchText(url){
+    const r = await fetch(url, {cache:"force-cache"});
+    if(!r.ok) throw new Error(`${r.status} ${r.statusText} → ${url}`);
+    return r.text();
+  }
+  async function fetchJSON(url){
+    const r = await fetch(url, {cache:"force-cache"});
+    if(!r.ok) throw new Error(`${r.status} ${r.statusText} → ${url}`);
+    return r.json();
+  }
+  async function tryFirstText(urls){
+    for(const u of urls){
+      try { const txt = await fetchText(u); return {url:u, text:txt}; } catch(e){ /* try next */ }
+    }
+    throw new Error("Could not load any of:\n" + urls.join("\n"));
+  }
 
-  async function loadArabicCSV(url){
-    const txt = await fetchText(url);
-    const lines = txt.split(/\r?\n/).filter(Boolean);
+  async function loadArabicCSV(){
+    const {url, text} = await tryFirstText(ARABIC_CSV_URLS);
+    const lines = text.split(/\r?\n/).filter(Boolean);
     const header = splitCSVLine(lines[0]).map(cleanHeader);
     const iS=findIndex(header,['surah','surah_no','sura','chapter','chapter_no']);
     const iA=findIndex(header,['ayah','ayah_no','ayah_no_surah','verse','verse_no','aya']);
     const iT=findIndex(header,['arabic_text','ayah_ar','arabic','text_ar','text']);
-    if(iS<0||iA<0||iT<0) throw new Error("Arabic CSV headers missing (need surah, ayah, arabic_text)");
+    if(iS<0||iA<0||iT<0) throw new Error("Arabic CSV headers missing (need surah, ayah, arabic_text). Loaded from: " + url);
     VERSES_AR.clear();
     for(let i=1;i<lines.length;i++){
       const row=splitCSVLine(lines[i]); if(!row || row.length<=Math.max(iS,iA,iT)) continue;
@@ -216,10 +231,10 @@
     setStatus(stAR,true,"arabic");
   }
 
-  async function loadEnglishCSV(url){
+  async function loadEnglishCSV(){
     try{
-      const txt = await fetchText(url);
-      const lines = txt.split(/\r?\n/).filter(Boolean);
+      const {text} = await tryFirstText(ENGLISH_CSV_URLS);
+      const lines = text.split(/\r?\n/).filter(Boolean);
       const header = splitCSVLine(lines[0]).map(cleanHeader);
       const iS=findIndex(header,['surah','surah_no','sura','chapter','chapter_no']);
       const iA=findIndex(header,['ayah','ayah_no','ayah_no_surah','verse','verse_no','aya']);
@@ -231,22 +246,22 @@
         VERSES_EN.set(k,row[iT]||'');
       }
       setStatus(stEN,true,"english");
-    }catch(e){ setStatus(stEN,false,"english"); }
+    }catch(e){
+      // English is optional
+      setStatus(stEN,false,"english");
+    }
   }
 
   async function ensureShard(mode, surah){
     if (SHARD_CACHE[mode][surah]) return SHARD_CACHE[mode][surah];
     const url = jsonShardUrl(mode, surah);
-    const raw = await fetchJSON(url);
-    // normalize: keep everything except "meta"
+    const raw = await fetchJSON(url);           // { "1:1":[...], "1:2":[...], meta: {...} }
     const out = {};
     for(const k in raw){
       if(k==="meta") continue;
-      const arr = Array.isArray(raw[k]) ? raw[k] : [];
-      out[k] = arr;
+      out[k] = Array.isArray(raw[k]) ? raw[k] : [];
     }
     SHARD_CACHE[mode][surah] = out;
-    // mark status chips based on first successful load
     if(mode==="hybrid") setStatus(stLH,true,"links (hybrid)");
     if(mode==="cos")    setStatus(stLC,true,"links (cosine)");
     if(mode==="bm25")   setStatus(stLB,true,"links (bm25)");
@@ -395,16 +410,16 @@
   // ====== BOOT ======
   async function boot(){
     try{
-      await loadArabicCSV(DATA_QURAN);
+      await loadArabicCSV();
       setStatus(stAR,true,"arabic");
     }catch(e){ showError("Arabic load failed: "+e.message); setStatus(stAR,false,"arabic"); }
 
-    await loadEnglishCSV(DATA_TR); // non-fatal
+    await loadEnglishCSV(); // optional; won't block
 
-    // Pre-warm one shard so chips go green
-    try{ await ensureShard("hybrid", 1); }catch{}
-    try{ await ensureShard("cos", 1); }catch{}
-    try{ await ensureShard("bm25", 1); }catch{}
+    // Pre-warm one shard per mode (if present) so status chips flip to ✓
+    try{ await ensureShard("hybrid", 1); }catch(e){ setStatus(stLH,false,"links (hybrid)"); }
+    try{ await ensureShard("cos", 1); }catch(e){ setStatus(stLC,false,"links (cosine)"); }
+    try{ await ensureShard("bm25", 1); }catch(e){ setStatus(stLB,false,"links (bm25)"); }
 
     document.getElementById('method').addEventListener('change', e=>{
       MODE = e.target.value;
